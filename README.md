@@ -9,29 +9,56 @@ go get -v github.com/codeskyblue/heartbeat
 ```
 
 ## Usage
+Server and Client should have the same secret.
+
 Server Example:
 
 ```go
-hbs := NewServer("my-secret", 15 * time.Second) // secret: my-secret, timeout: 15s
-hbs.OnConnect = func(identifier string) {
-	fmt.Println(identifier, "is online")
+package main
+
+import (
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/codeskyblue/heartbeat"
+)
+
+func main() {
+	hbs := heartbeat.NewServer("my-secret", 15*time.Second) // secret: my-secret, timeout: 15s
+	hbs.OnConnect = func(identifier string) {
+		fmt.Println(identifier, "is online")
+	}
+	hbs.OnDisconnect = func(identifier string) {
+		fmt.Println(identifier, "is offline")
+	}
+	http.Handle("/heartbeat", hbs)
+	http.ListenAndServe(":7000", nil)
 }
-hbs.OnDisconnect = func(identifier string) {
-	fmt.Println(identifier, "is offline")
-}
-http.Handle("/heartbeat", hbs)
 ```
 
 Client Example:
 
 ```go
-cancel := &Client{
-	ServerAddr: "http://hearbeat.example.com/heartbeat",
-	Secret: "my-secret", // must be save with server secret
-	Identifier: "client-unique-name",
-}.Beat(5 * time.Second)
+package main
 
-defer cancel() // cancel heartbeat
+import (
+	"time"
+
+	"github.com/codeskyblue/heartbeat"
+)
+
+func main() {
+	client := &heartbeat.Client{
+		ServerAddr: "http://localhost:7000/heartbeat", // replace to your server addr
+		Secret:     "my-secret",                       // must be save with server secret
+		Identifier: "client-unique-name",
+	}
+	cancel := client.Beat(5 * time.Second)
+	defer cancel() // cancel heartbeat
+	// Do something else
+	time.Sleep(10 * time.Second)
+}
 ```
 
 ## Protocol

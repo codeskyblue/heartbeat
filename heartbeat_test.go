@@ -21,7 +21,7 @@ func TestHeartbeat(t *testing.T) {
 
 	log.Println(ts.URL)
 	client := &Client{
-		Secret:     "kitty",
+		Secret:     "kitty2",
 		Identifier: "whoami",
 		ServerAddr: ts.URL,
 	}
