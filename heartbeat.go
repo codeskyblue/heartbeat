@@ -1,3 +1,15 @@
+/*
+Protocols between client and server
+
+Client (HTTP Request) ->
+
+	Query: identifier (uniq string)
+	Query: timestamp (seconds since January 1, 1970 UTC.)
+	Query: hashmac
+
+Server response ->
+	Body: {timestamp} {hashmac}
+*/
 package heartbeat
 
 import (
@@ -9,6 +21,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -21,6 +34,7 @@ import (
 
 type Server struct {
 	OnConnect    func(identifier string, req *http.Request)
+	OnReconnect  func(identifier string, req *http.Request)
 	OnDisconnect func(identifier string)
 	hbTimeout    time.Duration
 	secret       string // HMAC
@@ -70,7 +84,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) updateOrSaveSession(identifier string, req *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	remoteHost, _, _ := net.SplitHostPort(req.RemoteAddr)
 	if sess, ok := s.sessions[identifier]; ok {
+		// Call OnReconnect again when client IP changes
+		if sess.remoteHost != remoteHost {
+			sess.remoteHost = remoteHost
+			if s.OnReconnect != nil {
+				s.OnReconnect(identifier, req)
+			}
+		}
 		select {
 		case sess.recvC <- "beat":
 			// log.Println(sess.identifier, "beat")
@@ -82,6 +104,7 @@ func (s *Server) updateOrSaveSession(identifier string, req *http.Request) {
 		}
 		sess := &Session{
 			identifier: identifier,
+			remoteHost: remoteHost,
 			timer:      time.NewTimer(s.hbTimeout),
 			timeout:    s.hbTimeout,
 			recvC:      make(chan string, 0),
@@ -102,6 +125,7 @@ func (s *Server) updateOrSaveSession(identifier string, req *http.Request) {
 
 type Session struct {
 	identifier string
+	remoteHost string
 	timer      *time.Timer
 	timeout    time.Duration
 	recvC      chan string
