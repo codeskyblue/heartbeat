@@ -11,6 +11,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -19,7 +20,7 @@ import (
 )
 
 type Server struct {
-	OnConnect    func(identifier string)
+	OnConnect    func(identifier string, req *http.Request)
 	OnDisconnect func(identifier string)
 	hbTimeout    time.Duration
 	secret       string // HMAC
@@ -27,6 +28,7 @@ type Server struct {
 	mu           sync.Mutex
 }
 
+// NewServer accept secret, Client must have the same secret, so they can work together.
 func NewServer(secret string, timeout time.Duration) *Server {
 	return &Server{
 		hbTimeout: timeout,
@@ -39,6 +41,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	timestamp := r.FormValue("timestamp")
 	identifier := r.FormValue("identifier")
 	messageMAC := r.FormValue("messageMAC")
+
+	if identifier == "" {
+		http.Error(w, "identifier should not be empty", http.StatusBadRequest)
+		return
+	}
 	// check hash MAC
 	if messageMAC != hashIdentifier(timestamp, identifier, s.secret) {
 		http.Error(w, "messageMAC wrong", http.StatusBadRequest)
@@ -52,7 +59,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Invalid timestamp, advanced or outdated", http.StatusBadRequest)
 			return
 		}
-		go s.updateOrSaveSession(identifier)
+		go s.updateOrSaveSession(identifier, r)
 	}
 
 	// send server timestamp to client
@@ -60,7 +67,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%d %s", t, hashTimestamp(fmt.Sprintf("%d", t), s.secret))
 }
 
-func (s *Server) updateOrSaveSession(identifier string) {
+func (s *Server) updateOrSaveSession(identifier string, req *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if sess, ok := s.sessions[identifier]; ok {
@@ -71,7 +78,7 @@ func (s *Server) updateOrSaveSession(identifier string) {
 		}
 	} else {
 		if s.OnConnect != nil {
-			s.OnConnect(identifier)
+			s.OnConnect(identifier, req)
 		}
 		sess := &Session{
 			identifier: identifier,
@@ -115,10 +122,15 @@ type Client struct {
 	Secret     string
 	Identifier string
 	ServerAddr string
+	OnConnect  func()
+	OnError    func(error)
 }
 
 // Beat send identifier and hmac hash to server every interval
 func (c *Client) Beat(interval time.Duration) (cancel context.CancelFunc) {
+	if !regexp.MustCompile(`^https?://`).MatchString(c.ServerAddr) {
+		c.ServerAddr = "http://" + c.ServerAddr
+	}
 	ctx, cancel := context.WithCancel(context.TODO())
 	go func() {
 		for {
@@ -129,9 +141,15 @@ func (c *Client) Beat(interval time.Duration) (cancel context.CancelFunc) {
 				if strings.Contains(err.Error(), "messageMAC wrong") {
 					sleepDuration += 1 * time.Minute
 				}
+				if c.OnError != nil {
+					c.OnError(err)
+				}
 				log.Printf("heatbeat err: %v, retry after %v", err, sleepDuration)
 				time.Sleep(sleepDuration)
 				continue
+			}
+			if c.OnConnect != nil {
+				c.OnConnect()
 			}
 			err = c.beatLoop(ctx, interval, timeKey)
 			if err == nil {

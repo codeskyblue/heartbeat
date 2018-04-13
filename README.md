@@ -26,7 +26,7 @@ import (
 
 func main() {
 	hbs := heartbeat.NewServer("my-secret", 15*time.Second) // secret: my-secret, timeout: 15s
-	hbs.OnConnect = func(identifier string) {
+	hbs.OnConnect = func(identifier string, r *http.Request) {
 		fmt.Println(identifier, "is online")
 	}
 	hbs.OnDisconnect = func(identifier string) {
