@@ -21,7 +21,6 @@ import (
 	"io/ioutil"
 	"log"
 	"math/rand"
-	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -29,6 +28,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/codeskyblue/realip"
 	"github.com/pkg/errors"
 )
 
@@ -84,7 +84,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) updateOrSaveSession(identifier string, req *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	remoteHost, _, _ := net.SplitHostPort(req.RemoteAddr)
+	remoteHost := realip.FromRequest(req)
 	if sess, ok := s.sessions[identifier]; ok {
 		// Call OnReconnect again when client IP changes
 		if sess.remoteHost != remoteHost {
