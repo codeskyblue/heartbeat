@@ -2,6 +2,7 @@ package heartbeat
 
 import (
 	"log"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -10,7 +11,7 @@ import (
 func TestHeartbeat(t *testing.T) {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 	hbs := NewServer("kitty", 4*time.Second)
-	hbs.OnConnect = func(identifier string) {
+	hbs.OnConnect = func(identifier string, _ *http.Request) {
 		log.Println("connect", identifier)
 	}
 	hbs.OnDisconnect = func(identifier string) {

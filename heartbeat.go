@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/codeskyblue/realip"
+	"github.com/codeskyblue/safetime"
 	"github.com/pkg/errors"
 )
 
@@ -105,7 +106,7 @@ func (s *Server) updateOrSaveSession(identifier string, req *http.Request) {
 		sess := &Session{
 			identifier: identifier,
 			remoteHost: remoteHost,
-			timer:      time.NewTimer(s.hbTimeout),
+			timer:      safetime.NewTimer(s.hbTimeout),
 			timeout:    s.hbTimeout,
 			recvC:      make(chan string, 0),
 		}
@@ -126,7 +127,7 @@ func (s *Server) updateOrSaveSession(identifier string, req *http.Request) {
 type Session struct {
 	identifier string
 	remoteHost string
-	timer      *time.Timer
+	timer      *safetime.Timer
 	timeout    time.Duration
 	recvC      chan string
 }
